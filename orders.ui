@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OrdersDialog</class>
+ <widget class="QWidget" name="OrdersDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>800</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>images/Чудо Обувь.png</normaloff>images/Чудо Обувь.png</iconset>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <widget class="QLabel" name="titleLabel">
+       <property name="styleSheet">
+        <string notr="true">QLabel#titleLabel {
+font-family: 'Calibri';
+font-size: 18pt;
+font-weight: bold;
+color: #70B2AF;
+}
+</string>
+       </property>
+       <property name="text">
+        <string>Управление заказами</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>188</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="label">
+       <property name="minimumSize">
+        <size>
+         <width>60</width>
+         <height>60</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>60</width>
+         <height>60</height>
+        </size>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+       <property name="pixmap">
+        <pixmap>images/Чудо Обувь.png</pixmap>
+       </property>
+       <property name="scaledContents">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="detailsLabel">
+     <property name="styleSheet">
+      <string notr="true">QLabel#detailsLabel {
+font-family: 'Calibri';
+font-size: 16pt;
+font-weight: bold;
+color: #70B2AF;
+}
+</string>
+     </property>
+     <property name="text">
+      <string>Состав выбранного заказа:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="ordersTable">
+     <property name="editTriggers">
+      <set>QAbstractItemView::NoEditTriggers</set>
+     </property>
+     <attribute name="verticalHeaderStretchLastSection">
+      <bool>true</bool>
+     </attribute>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="orderDetailsTable"/>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QPushButton" name="deleteOrderButton">
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+background-color: #70B2AF;
+color: #FFFFFF;
+border: none;
+padding: 8px 16px;
+font-family: 'Calibri';
+font-size: 12pt;
+font-weight: bold;
+}
+
+QPushButton:hover  {
+background-color: #5A9B98;
+}
+
+QPushButton:hover {
+background-color: #4A8582;
+}
+</string>
+       </property>
+       <property name="text">
+        <string>Удалить заказ</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="editOrderButton">
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+background-color: #D2F6E7;
+color: #333333;
+border: 1px solid #70B2AF;
+border-radius: 6px;
+font-family: 'Calibri';
+font-size: 12pt;
+font-weight: bold;
+}
+
+QPushButton#guestButton:hover {
+background-color: #BBEBD7;
+}</string>
+       </property>
+       <property name="text">
+        <string>Редактировать заказ</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="backButton">
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+background-color: #70B2AF;
+color: #FFFFFF;
+border: none;
+padding: 8px 16px;
+font-family: 'Calibri';
+font-size: 12pt;
+font-weight: bold;
+}
+
+QPushButton:hover  {
+background-color: #5A9B98;
+}
+
+QPushButton:hover {
+background-color: #4A8582;
+}
+</string>
+       </property>
+       <property name="text">
+        <string>Назад</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
