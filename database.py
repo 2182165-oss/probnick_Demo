@@ -1,6 +1,7 @@
 import psycopg2
 
-DB_CONFIG = {
+# Параметры соединения с БД
+CONN_PARAMS = {
     "dbname": "demo",
     "user": "postgres",
     "password": "12345678",
@@ -8,44 +9,62 @@ DB_CONFIG = {
     "port": "5432"
 }
 
-def get_connection():
-    return psycopg2.connect(**DB_CONFIG)
 
-def authenticate_user(login):
-    """Авторизация пользователя по логину"""
+def open_connection():
+    """Открывает новое соединение с PostgreSQL."""
+    return psycopg2.connect(**CONN_PARAMS)
+
+
+def check_user(login_value):
+    """Проверяет наличие пользователя по логину и возвращает его данные."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = """
+        connection = open_connection()
+        cur = connection.cursor()
+        sql = """
             SELECT last_name, first_name, middle_name, role
             FROM users
             WHERE login = %s;
         """
-        cursor.execute(query, (login,))
-        user_data = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        cur.execute(sql, (login_value,))
+        result = cur.fetchone()
+        cur.close()
+        connection.close()
 
-        if user_data:
-            last_name, first_name, middle_name, role = user_data
-            fio = f"{last_name} {first_name[0]}." if first_name else last_name
-            if middle_name:
-                fio += f"{middle_name[0]}."
-           
-            role_name = role if role else "Менеджер"
-            return {"fio": fio, "role_name": role_name, "role_id": role}
-        return None
-    except Exception as e:
-        print(f"Ошибка БД (авторизация): {e}")
+        if result is None:
+            return None
+
+        surname, name, patronymic, user_role = result
+
+        # Формируем короткое ФИО: Иванов И.И.
+        short_name = surname
+        if name:
+            short_name += f" {name[0]}."
+        if patronymic:
+            short_name += f"{patronymic[0]}."
+
+        role_title = user_role if user_role else "Менеджер"
+
+        return {
+            "fio": short_name,
+            "role_name": role_title,
+            "role_id": user_role
+        }
+
+    except Exception as err:
+        print(f"Ошибка БД (авторизация): {err}")
+        if connection:
+            connection.close()
         return None
 
-def get_all_products():
-    """Получение всех товаров (ровно 8 элементов под распаковку в main.py)"""
+
+def fetch_products():
+    """Возвращает список товаров с остатками (8 полей на строку)."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        # Возвращаем ровно 8 полей: id, name, category, subcategory, manufacturer, composition, price, qty
-        query = """
+        connection = open_connection()
+        cur = connection.cursor()
+        sql = """
             SELECT
                 p.id,
                 p.product_name,
@@ -54,99 +73,131 @@ def get_all_products():
                 p.manufacturer,
                 p.composition,
                 p.price,
-                COALESCE((SELECT SUM(s.stock_quantity) FROM stock_items s WHERE s.product_name = p.product_name), 0) as qty
+                COALESCE((
+                    SELECT SUM(s.stock_quantity)
+                    FROM stock_items s
+                    WHERE s.product_name = p.product_name
+                ), 0) AS qty
             FROM products p;
         """
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return rows
-    except Exception as e:
-        print(f"Ошибка БД (товары): {e}")
+        cur.execute(sql)
+        data = cur.fetchall()
+        cur.close()
+        connection.close()
+        return data
+
+    except Exception as err:
+        print(f"Ошибка БД (товары): {err}")
+        if connection:
+            connection.close()
         return []
 
-def get_all_categories(cur=None):
-    """Возвращает список всех уникальных категорий товаров."""
-    close_conn = False
+
+def fetch_categories(cursor=None):
+    """Возвращает уникальные категории товаров."""
+    own_connection = False
+    connection = None
     try:
-        if cur is None:
-            conn = get_connection()
-            cursor = conn.cursor()
-            close_conn = True
+        if cursor is None:
+            connection = open_connection()
+            cur = connection.cursor()
+            own_connection = True
         else:
-            cursor = cur
-           
-        cursor.execute("SELECT DISTINCT category FROM products WHERE category IS NOT NULL;")
-        categories = [row[0] for row in cursor.fetchall()]
-       
-        if close_conn:
-            cursor.close()
-            conn.close()
-        return categories
-    except Exception as e:
-        print(f"Ошибка БД (категории): {e}")
+            cur = cursor
+
+        cur.execute("SELECT DISTINCT category FROM products WHERE category IS NOT NULL;")
+        result = [row[0] for row in cur.fetchall()]
+
+        if own_connection:
+            cur.close()
+            connection.close()
+
+        return result
+
+    except Exception as err:
+        print(f"Ошибка БД (категории): {err}")
+        if own_connection and connection:
+            connection.close()
         return []
 
-def get_all_orders():
-    """Получение всех заказов"""
+
+def fetch_orders():
+    """Возвращает все заказы."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = "SELECT * FROM orders;"
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return rows
-    except Exception as e:
-        print(f"Ошибка получения заказов: {e}")
+        connection = open_connection()
+        cur = connection.cursor()
+        cur.execute("SELECT * FROM orders;")
+        data = cur.fetchall()
+        cur.close()
+        connection.close()
+        return data
+
+    except Exception as err:
+        print(f"Ошибка получения заказов: {err}")
+        if connection:
+            connection.close()
         return []
 
-def get_order_details(order_number):
-    """Возвращает детальную информацию по конкретному заказу по его номеру."""
+
+def fetch_order_details(order_number):
+    """Возвращает детали заказа по его номеру."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = "SELECT * FROM orders WHERE order_number = %s;"
-        cursor.execute(query, (order_number,))
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return rows
-    except Exception as e:
-        print(f"Ошибка получения деталей заказа: {e}")
+        connection = open_connection()
+        cur = connection.cursor()
+        cur.execute("SELECT * FROM orders WHERE order_number = %s;", (order_number,))
+        data = cur.fetchall()
+        cur.close()
+        connection.close()
+        return data
+
+    except Exception as err:
+        print(f"Ошибка получения деталей заказа: {err}")
+        if connection:
+            connection.close()
         return []
 
-def delete_order_by_id(order_id):
-    """Удаление заказа по его ID."""
+
+def remove_order(order_id):
+    """Удаляет заказ по его ID."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = "DELETE FROM orders WHERE id = %s;"
-        cursor.execute(query, (order_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        connection = open_connection()
+        cur = connection.cursor()
+        cur.execute("DELETE FROM orders WHERE id = %s;", (order_id,))
+        connection.commit()
+        cur.close()
+        connection.close()
         return True
-    except Exception as e:
-        print(f"Ошибка удаления заказа: {e}")
+
+    except Exception as err:
+        print(f"Ошибка удаления заказа: {err}")
+        if connection:
+            connection.close()
         return False
 
-def create_order(user_fio, cart_items, total_price):
-    """Создание заказа"""
+
+def save_order(user_fio, cart_items, total_price):
+    """Создаёт новый заказ (поведение как раньше)."""
+    connection = None
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
+        connection = open_connection()
+        cur = connection.cursor()
+
         for item in cart_items:
-            query_order = """
+            sql = """
                 INSERT INTO orders (order_number, order_date, customer_name, product_name, quantity, unit_price)
                 VALUES (DEFAULT, CURRENT_DATE, %s, %s, %s, %s);
             """
-        conn.commit()
-        cursor.close()
-        conn.close()
+
+        connection.commit()
+        cur.close()
+        connection.close()
         return True
-    except Exception as e:
-        print(f"Ошибка сохранения заказа: {e}")
+
+    except Exception as err:
+        print(f"Ошибка сохранения заказа: {err}")
+        if connection:
+            connection.close()
         return False

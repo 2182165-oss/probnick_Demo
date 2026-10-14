@@ -1,154 +1,190 @@
 import os
 import openpyxl
 import psycopg2
+
 from config import DB_CONFIG, DATA_DIR
 
-def import_sizes(cur):
-    file_path = os.path.join(DATA_DIR, "Sizes_import.xlsx")
-    if not os.path.exists(file_path):
-        print(f"⚠️ Файл не найден: {file_path}")
+
+# ============================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
+def _load_sheet(filename):
+    """Загружает активный лист Excel-файла. Возвращает (sheet, path) или (None, path)."""
+    path = os.path.join(DATA_DIR, filename)
+    if not os.path.exists(path):
+        print(f"⚠️ Файл не найден: {path}")
+        return None, path
+
+    workbook = openpyxl.load_workbook(path)
+    return workbook.active, path
+
+
+# ============================================================
+# ИМПОРТ РАЗМЕРОВ
+# ============================================================
+def load_sizes(cur):
+    sheet, _ = _load_sheet("Sizes_import.xlsx")
+    if sheet is None:
         return
 
-    wb = openpyxl.load_workbook(file_path)
-    sheet = wb.active
-   
-    count = 0
+    counter = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[0] is not None:
-            size_val = float(row[0])
-            cur.execute(
-                "INSERT INTO sizes (size_value) VALUES (%s) ON CONFLICT (size_value) DO NOTHING;",
-                (size_val,)
-            )
-            count += 1
-    print(f"✅ Импортировано размеров: {count}")
+        if row[0] is None:
+            continue
 
-def import_users(cur):
-    file_path = os.path.join(DATA_DIR, "Users_import.xlsx")
-    if not os.path.exists(file_path):
-        print(f"⚠️ Файл не найден: {file_path}")
+        size_val = float(row[0])
+        cur.execute(
+            "INSERT INTO sizes (size_value) VALUES (%s) ON CONFLICT (size_value) DO NOTHING;",
+            (size_val,)
+        )
+        counter += 1
+
+    print(f"✅ Импортировано размеров: {counter}")
+
+
+# ============================================================
+# ИМПОРТ ПОЛЬЗОВАТЕЛЕЙ
+# ============================================================
+def load_users(cur):
+    sheet, _ = _load_sheet("Users_import.xlsx")
+    if sheet is None:
         return
 
-    wb = openpyxl.load_workbook(file_path)
-    sheet = wb.active
-   
-    count = 0
+    counter = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[3] is not None:  # Логин
-            last_name, first_name, middle_name, login, role = row[0], row[1], row[2], row[3], row[4]
-            cur.execute(
-                """
-                INSERT INTO users (last_name, first_name, middle_name, login, role)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (login) DO NOTHING;
-                """,
-                (last_name, first_name, middle_name, login, role)
-            )
-            count += 1
-    print(f"✅ Импортировано пользователей: {count}")
+        if row[3] is None:
+            continue
 
-def import_products(cur):
-    file_path = os.path.join(DATA_DIR, "Products_import.xlsx")
-    if not os.path.exists(file_path):
-        print(f"⚠️ Файл не найден: {file_path}")
+        surname, name, patronymic, login, role = row[0], row[1], row[2], row[3], row[4]
+        cur.execute(
+            """
+            INSERT INTO users (last_name, first_name, middle_name, login, role)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (login) DO NOTHING;
+            """,
+            (surname, name, patronymic, login, role)
+        )
+        counter += 1
+
+    print(f"✅ Импортировано пользователей: {counter}")
+
+
+# ============================================================
+# ИМПОРТ ТОВАРОВ
+# ============================================================
+def load_products(cur):
+    sheet, _ = _load_sheet("Products_import.xlsx")
+    if sheet is None:
         return
 
-    wb = openpyxl.load_workbook(file_path)
-    sheet = wb.active
-   
-    count = 0
+    counter = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[3] is not None:  # Наименование товара
-            category, subcategory, image, product_name, manufacturer, description, composition, price = row
-            cur.execute(
-                """
-                INSERT INTO products (category, subcategory, image, product_name, manufacturer, description, composition, price)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                (category, subcategory, image, product_name, manufacturer, description, composition, price)
-            )
-            count += 1
-    print(f"✅ Импортировано товаров: {count}")
+        if row[3] is None:
+            continue
 
-def import_stock(cur):
-    file_path = os.path.join(DATA_DIR, "Stock_Items_import.xlsx")
-    if not os.path.exists(file_path):
-        print(f"⚠️ Файл не найден: {file_path}")
+        category, subcategory, image, name, manufacturer, description, composition, price = row
+        cur.execute(
+            """
+            INSERT INTO products (category, subcategory, image, product_name, manufacturer, description, composition, price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+            """,
+            (category, subcategory, image, name, manufacturer, description, composition, price)
+        )
+        counter += 1
+
+    print(f"✅ Импортировано товаров: {counter}")
+
+
+# ============================================================
+# ИМПОРТ СКЛАДА
+# ============================================================
+def load_stock(cur):
+    sheet, _ = _load_sheet("Stock_Items_import.xlsx")
+    if sheet is None:
         return
 
-    wb = openpyxl.load_workbook(file_path)
-    sheet = wb.active
-   
-    count = 0
+    counter = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[0] is not None:
-            product_name, manufacturer, size, stock_quantity = row
-            cur.execute(
-                """
-                INSERT INTO stock_items (product_name, manufacturer, size, stock_quantity)
-                VALUES (%s, %s, %s, %s);
-                """,
-                (product_name, manufacturer, size, stock_quantity)
-            )
-            count += 1
-    print(f"✅ Импортировано складских позиций: {count}")
+        if row[0] is None:
+            continue
 
-def import_orders(cur):
-    file_path = os.path.join(DATA_DIR, "Orders_import.xlsx")
-    if not os.path.exists(file_path):
-        print(f"⚠️ Файл не найден: {file_path}")
+        name, manufacturer, size, quantity = row
+        cur.execute(
+            """
+            INSERT INTO stock_items (product_name, manufacturer, size, stock_quantity)
+            VALUES (%s, %s, %s, %s);
+            """,
+            (name, manufacturer, size, quantity)
+        )
+        counter += 1
+
+    print(f"✅ Импортировано складских позиций: {counter}")
+
+
+# ============================================================
+# ИМПОРТ ЗАКАЗОВ
+# ============================================================
+def load_orders(cur):
+    sheet, _ = _load_sheet("Orders_import.xlsx")
+    if sheet is None:
         return
 
-    wb = openpyxl.load_workbook(file_path)
-    sheet = wb.active
-   
-    count = 0
+    counter = 0
     for row in sheet.iter_rows(min_row=2, values_only=True):
-        if row[0] is not None:
-            order_number, order_date, customer_name, category, product_name, manufacturer, size, quantity, unit_price = row
-            cur.execute(
-                """
-                INSERT INTO orders (order_number, order_date, customer_name, category, product_name, manufacturer, size, quantity, unit_price)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                (order_number, order_date, customer_name, category, product_name, manufacturer, size, quantity, unit_price)
-            )
-            count += 1
-    print(f"✅ Импортировано заказов: {count}")
+        if row[0] is None:
+            continue
 
+        (order_number, order_date, customer_name, category,
+         product_name, manufacturer, size, quantity, unit_price) = row
+
+        cur.execute(
+            """
+            INSERT INTO orders (order_number, order_date, customer_name, category, product_name,
+                                manufacturer, size, quantity, unit_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+            """,
+            (order_number, order_date, customer_name, category,
+             product_name, manufacturer, size, quantity, unit_price)
+        )
+        counter += 1
+
+    print(f"✅ Импортировано заказов: {counter}")
+
+
+# ============================================================
+# ГЛАВНАЯ ФУНКЦИЯ
+# ============================================================
 def main():
-    print("==================================================")
+    print("=" * 50)
     print("Импорт данных в БД Чудо Обувь")
-    print("==================================================")
-   
-    conn = psycopg2.connect(**DB_CONFIG)
-    conn.autocommit = False
-    cur = conn.cursor()
-   
+    print("=" * 50)
+
+    connection = psycopg2.connect(**DB_CONFIG)
+    connection.autocommit = False
+    cur = connection.cursor()
+
+    steps = [
+        ("[1/5] Импорт размеров...", load_sizes),
+        ("[2/5] Импорт пользователей...", load_users),
+        ("[3/5] Импорт товаров...", load_products),
+        ("[4/5] Импорт складских остатков...", load_stock),
+        ("[5/5] Импорт заказов...", load_orders),
+    ]
+
     try:
-        print("\n[1/5] Импорт размеров...")
-        import_sizes(cur)
-       
-        print("\n[2/5] Импорт пользователей...")
-        import_users(cur)
-       
-        print("\n[3/5] Импорт товаров...")
-        import_products(cur)
-       
-        print("\n[4/5] Импорт складских остатков...")
-        import_stock(cur)
-       
-        print("\n[5/5] Импорт заказов...")
-        import_orders(cur)
-       
-        conn.commit()
+        for title, func in steps:
+            print(f"\n{title}")
+            func(cur)
+
+        connection.commit()
         print("\n🎉 Все данные успешно импортированы в базу данных!")
-    except Exception as e:
-        conn.rollback()
-        print(f"\n❌ Произошла ошибка при импорте: {e}")
+    except Exception as err:
+        connection.rollback()
+        print(f"\n❌ Произошла ошибка при импорте: {err}")
     finally:
         cur.close()
-        conn.close()
+        connection.close()
+
 
 if __name__ == "__main__":
     main()

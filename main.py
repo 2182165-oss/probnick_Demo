@@ -1,396 +1,408 @@
 import sys
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QMessageBox, QTableWidgetItem,
-    QHeaderView, QLabel
+    QApplication, QMainWindow, QWidget, QMessageBox,
+    QTableWidgetItem, QHeaderView, QLabel
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
-from ui_login import Ui_MainWindow as Login
-from ui_autorazation import Ui_MainWindow as Auto
-from ui_cart import Ui_CartDialog as Cart
+from ui_login import Ui_MainWindow as LoginUI
+from ui_autorazation import Ui_MainWindow as CatalogUI
+from ui_cart import Ui_CartDialog as CartUI
 from ui_orders import Ui_OrdersDialog as OrdersUI
 
 from database import (
-    authenticate_user, get_all_categories, get_all_products,
-    create_order, get_all_orders, get_order_details, delete_order_by_id
+    check_user, fetch_categories, fetch_products,
+    save_order, fetch_orders, fetch_order_details, remove_order
 )
 
 
+# ============================================================
+# ОКНО КОРЗИНЫ
+# ============================================================
 class CartWindow(QWidget):
-    """Окно просмотра корзины и оформления заказа"""
-    def __init__(self, user_info, cart_items, parent_catalog):
+    """Окно корзины и оформления заказа."""
+
+    def __init__(self, user_data, items, catalog_ref):
         super().__init__()
-        self.ui = Cart()
+        self.ui = CartUI()
         self.ui.setupUi(self)
-       
-        self.user_info = user_info
-        self.cart_items = cart_items
-        self.parent_catalog = parent_catalog
 
-        self.setup_ui()
+        self.user_data = user_data
+        self.items = items
+        self.catalog_ref = catalog_ref
+        self.total_sum = 0.0
 
-    def setup_ui(self):
+        self._bind_buttons()
+        self._render_table()
+
+    def _bind_buttons(self):
         self.ui.backButton.clicked.connect(self.close)
-        self.ui.clearCartButton.clicked.connect(self.clear_cart)
-        self.ui.removeItemButton.clicked.connect(self.remove_selected_item)
-        self.ui.checkoutButton.clicked.connect(self.process_checkout)
+        self.ui.clearCartButton.clicked.connect(self._clear_all)
+        self.ui.removeItemButton.clicked.connect(self._remove_selected)
+        self.ui.checkoutButton.clicked.connect(self._checkout)
 
-        self.refresh_table()
+    def _render_table(self):
+        columns = ["ID", "Наименование", "Цена (руб.)", "Кол-во", "Сумма (руб.)"]
+        table = self.ui.cartTable
+        table.setColumnCount(len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setRowCount(0)
 
-    def refresh_table(self):
-        headers = ["ID", "Наименование", "Цена (руб.)", "Кол-во", "Сумма (руб.)"]
-        self.ui.cartTable.setColumnCount(len(headers))
-        self.ui.cartTable.setHorizontalHeaderLabels(headers)
-        self.ui.cartTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.ui.cartTable.setRowCount(0)
-
-        total_sum = 0.0
-
-        for row_idx, item in enumerate(self.cart_items):
+        total = 0.0
+        for idx, item in enumerate(self.items):
             # item = [product_id, name, price, qty, sum]
-            self.ui.cartTable.insertRow(row_idx)
-            item_sum = item[2] * item[3]
-            item[4] = item_sum
-            total_sum += item_sum
+            table.insertRow(idx)
+            row_sum = item[2] * item[3]
+            item[4] = row_sum
+            total += row_sum
 
-            self.ui.cartTable.setItem(row_idx, 0, QTableWidgetItem(str(item[0])))
-            self.ui.cartTable.setItem(row_idx, 1, QTableWidgetItem(str(item[1])))
-            self.ui.cartTable.setItem(row_idx, 2, QTableWidgetItem(f"{item[2]:.2f}"))
-            self.ui.cartTable.setItem(row_idx, 3, QTableWidgetItem(str(item[3])))
-            self.ui.cartTable.setItem(row_idx, 4, QTableWidgetItem(f"{item_sum:.2f}"))
+            table.setItem(idx, 0, QTableWidgetItem(str(item[0])))
+            table.setItem(idx, 1, QTableWidgetItem(str(item[1])))
+            table.setItem(idx, 2, QTableWidgetItem(f"{item[2]:.2f}"))
+            table.setItem(idx, 3, QTableWidgetItem(str(item[3])))
+            table.setItem(idx, 4, QTableWidgetItem(f"{row_sum:.2f}"))
 
-        self.ui.totalPriceLabel.setText(f"Итого к оплате: {total_sum:,.2f} руб.".replace(",", " "))
-        self.total_sum = total_sum
+        pretty_total = f"{total:,.2f}".replace(",", " ")
+        self.ui.totalPriceLabel.setText(f"Итого к оплате: {pretty_total} руб.")
+        self.total_sum = total
 
-    def remove_selected_item(self):
-        current_row = self.ui.cartTable.currentRow()
-        if current_row >= 0:
-            self.cart_items.pop(current_row)
-            self.refresh_table()
-        else:
+    def _remove_selected(self):
+        row = self.ui.cartTable.currentRow()
+        if row < 0:
             QMessageBox.warning(self, "Внимание", "Выберите строку для удаления!")
+            return
+        self.items.pop(row)
+        self._render_table()
 
-    def clear_cart(self):
-        self.cart_items.clear()
-        self.refresh_table()
+    def _clear_all(self):
+        self.items.clear()
+        self._render_table()
 
-    def process_checkout(self):
-        if not self.cart_items:
+    def _checkout(self):
+        if not self.items:
             QMessageBox.warning(self, "Ошибка", "Корзина пуста!")
             return
 
-        fio = self.user_info.get("fio", "Анонимный клиент")
-        if create_order(fio, self.cart_items, self.total_sum):
+        fio = self.user_data.get("fio", "Анонимный клиент")
+        if save_order(fio, self.items, self.total_sum):
             QMessageBox.information(self, "Успех", "Заказ успешно оформлен!")
-            self.cart_items.clear()
-            self.parent_catalog.cart = []
+            self.items.clear()
+            self.catalog_ref.cart = []
             self.close()
         else:
             QMessageBox.critical(self, "Ошибка", "Не удалось сохранить заказ в БД.")
 
 
+# ============================================================
+# ОКНО ЗАКАЗОВ
+# ============================================================
 class OrdersWindow(QWidget):
-    """Окно управления заказами"""
-    def __init__(self, user_info):
+    """Окно управления заказами."""
+
+    def __init__(self, user_data):
         super().__init__()
         self.ui = OrdersUI()
         self.ui.setupUi(self)
-        self.user_info = user_info
+        self.user_data = user_data
 
-        self.setup_ui()
+        self._bind_buttons()
+        self._configure_permissions()
+        self._load_orders()
 
-    def setup_ui(self):
+    def _bind_buttons(self):
         self.ui.backButton.clicked.connect(self.close)
-        self.ui.deleteOrderButton.clicked.connect(self.delete_selected_order)
-        self.ui.ordersTable.itemSelectionChanged.connect(self.load_order_details)
+        self.ui.deleteOrderButton.clicked.connect(self._delete_selected)
+        self.ui.ordersTable.itemSelectionChanged.connect(self._show_details)
 
-        # Редактирование доступно только Админу (role_id == 3)
-        role_id = self.user_info.get("role_id", 0)
+    def _configure_permissions(self):
+        role_id = self.user_data.get("role_id", 0)
         if role_id != 3:
             self.ui.editOrderButton.hide()
 
-        self.load_orders()
-
-    def load_orders(self):
-        orders = get_all_orders()
-
-        # Устанавливаем понятные заголовки для таблицы
+    def _load_orders(self):
+        data = fetch_orders()
         headers = ["ID Заказа", "Дата", "Клиент", "Сумма"]
-        self.ui.ordersTable.setColumnCount(len(headers))
-        self.ui.ordersTable.setHorizontalHeaderLabels(headers)
+        table = self.ui.ordersTable
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
 
-        if not orders:
-            self.ui.ordersTable.setRowCount(0)
+        if not data:
+            table.setRowCount(0)
             return
 
-        self.ui.ordersTable.setRowCount(len(orders))
+        table.setRowCount(len(data))
 
-        for row_idx, row_data in enumerate(orders):
-            for col_idx, value in enumerate(row_data):
-                # Индекс 3 — это 4-я колонка (Сумма)
-                if col_idx == 3:
-                    if value is not None:
-                        try:
-                            # Превращаем число в красивый формат: 1500.5 -> 1 500.50 ₽
-                            item_text = f"{float(value):,.2f}".replace(",", " ") + " ₽"
-                        except (ValueError, TypeError):
-                            item_text = str(value)
-                    else:
-                        item_text = "0.00 ₽"
-                else:
-                    item_text = str(value) if value is not None else "—"
+        for r_idx, row_data in enumerate(data):
+            for c_idx, val in enumerate(row_data):
+                text = self._format_cell(c_idx, val)
+                cell = QTableWidgetItem(text)
+                cell.setFlags(cell.flags() ^ Qt.ItemIsEditable)
+                table.setItem(r_idx, c_idx, cell)
 
-                item = QTableWidgetItem(item_text)
-                item.setFlags(item.flags() ^ Qt.ItemIsEditable)  # Запрет редактирования ячейки
-                self.ui.ordersTable.setItem(row_idx, col_idx, item)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
-        self.ui.ordersTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    @staticmethod
+    def _format_cell(col_index, value):
+        if col_index == 3:
+            if value is None:
+                return "0.00 ₽"
+            try:
+                return f"{float(value):,.2f}".replace(",", " ") + " ₽"
+            except (ValueError, TypeError):
+                return str(value)
+        return str(value) if value is not None else "—"
 
-    def load_order_details(self):
-        current_row = self.ui.ordersTable.currentRow()
-        if current_row < 0:
+    def _show_details(self):
+        row = self.ui.ordersTable.currentRow()
+        if row < 0:
             return
 
-        order_id = int(self.ui.ordersTable.item(current_row, 0).text())
-        details = get_order_details(order_id)
+        order_id = int(self.ui.ordersTable.item(row, 0).text())
+        details = fetch_order_details(order_id)
 
         headers = ["Наименование товара", "Количество", "Цена за ед.", "Сумма"]
-        self.ui.orderDetailsTable.setColumnCount(len(headers))
-        self.ui.orderDetailsTable.setHorizontalHeaderLabels(headers)
-        self.ui.orderDetailsTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.ui.orderDetailsTable.setRowCount(0)
+        table = self.ui.orderDetailsTable
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.setRowCount(0)
 
-        for row_idx, item in enumerate(details):
-            self.ui.orderDetailsTable.insertRow(row_idx)
-            for col_idx, value in enumerate(item):
-                item_text = f"{value:,.2f}".replace(",", " ") if col_idx in [2, 3] else str(value)
-                self.ui.orderDetailsTable.setItem(row_idx, col_idx, QTableWidgetItem(item_text))
+        for r_idx, item in enumerate(details):
+            table.insertRow(r_idx)
+            for c_idx, val in enumerate(item):
+                if c_idx in (2, 3):
+                    text = f"{val:,.2f}".replace(",", " ")
+                else:
+                    text = str(val)
+                table.setItem(r_idx, c_idx, QTableWidgetItem(text))
 
-    def delete_selected_order(self):
-        current_row = self.ui.ordersTable.currentRow()
-        if current_row < 0:
+    def _delete_selected(self):
+        row = self.ui.ordersTable.currentRow()
+        if row < 0:
             QMessageBox.warning(self, "Внимание", "Выберите заказ для удаления!")
             return
 
-        order_id = int(self.ui.ordersTable.item(current_row, 0).text())
-       
-        reply = QMessageBox.question(
-            self, "Подтверждение", f"Удалить заказ №{order_id}?",
+        order_id = int(self.ui.ordersTable.item(row, 0).text())
+        answer = QMessageBox.question(
+            self, "Подтверждение",
+            f"Удалить заказ №{order_id}?",
             QMessageBox.Yes | QMessageBox.No
         )
 
-        if reply == QMessageBox.Yes:
-            if delete_order_by_id(order_id):
+        if answer == QMessageBox.Yes:
+            if remove_order(order_id):
                 QMessageBox.information(self, "Успех", "Заказ удален!")
-                self.load_orders()
+                self._load_orders()
                 self.ui.orderDetailsTable.setRowCount(0)
             else:
                 QMessageBox.critical(self, "Ошибка", "Не удалось удалить заказ.")
 
 
-class AutoReraz(QMainWindow):
-    """Окно каталога товаров"""
-    def __init__(self, user_info):
+# ============================================================
+# ОКНО КАТАЛОГА
+# ============================================================
+class CatalogWindow(QMainWindow):
+    """Главное окно каталога товаров."""
+
+    def __init__(self, user_data):
         super().__init__()
-        self.ui = Auto()
+        self.ui = CatalogUI()
         self.ui.setupUi(self)
-       
-        self.user_info = user_info
-        self.all_products = []
-        self.cart = []  # Корзина хранит элементы [p_id, name, price, qty, sum]
 
-        self.setup_ui_logic()
-        self.apply_role_permissions()
-        self.init_catalog_data()
+        self.user_data = user_data
+        self.products = []
+        self.cart = []
 
-    def setup_ui_logic(self):
-        fio = self.user_info.get("fio", "Гость")
-        role = self.user_info.get("role_name", "Неавторизованный")
+        self._bind_buttons()
+        self._apply_permissions()
+        self._load_catalog()
+
+    def _bind_buttons(self):
+        fio = self.user_data.get("fio", "Гость")
+        role = self.user_data.get("role_name", "Неавторизованный")
         self.ui.userinfolabel.setText(f"{fio} ({role})")
-       
-        self.ui.LogoutButton.clicked.connect(self.logout)
-        self.ui.addToOrderButton.clicked.connect(self.handle_add_to_order)
-        self.ui.manageOrdersButton.clicked.connect(self.open_orders_window)
 
-        self.ui.searchLineEdit.textChanged.connect(self.apply_filters)
-        self.ui.filterComboBox.currentTextChanged.connect(self.apply_filters)
-        self.ui.sortComboBox.currentIndexChanged.connect(self.apply_filters)
+        self.ui.LogoutButton.clicked.connect(self._logout)
+        self.ui.addToOrderButton.clicked.connect(self._add_to_cart)
+        self.ui.manageOrdersButton.clicked.connect(self._open_orders)
 
-    def handle_add_to_order(self):
-        """Добавление выделенного товара в корзину и открытие окна корзины"""
-        current_row = self.ui.productsTable.currentRow()
-       
-        if current_row >= 0:
-            image_label = self.ui.productsTable.cellWidget(current_row, 0)
-            product_id = int(image_label.property("product_id"))
-            product_name = self.ui.productsTable.item(current_row, 1).text()
-            price_text = self.ui.productsTable.item(current_row, 6).text().replace(" ", "").replace(",", ".")
-            price = float(price_text)
+        self.ui.searchLineEdit.textChanged.connect(self._apply_filters)
+        self.ui.filterComboBox.currentTextChanged.connect(self._apply_filters)
+        self.ui.sortComboBox.currentIndexChanged.connect(self._apply_filters)
 
-            found = False
-            for item in self.cart:
-                if item[0] == product_id:
-                    item[3] += 1
-                    found = True
-                    break
-
-            if not found:
-                self.cart.append([product_id, product_name, price, 1, price])
-
-        self.cart_window = CartWindow(self.user_info, self.cart, self)
-        self.cart_window.show()
-
-    def open_orders_window(self):
-        """Открытие окна управления заказами"""
-        self.orders_window = OrdersWindow(self.user_info)
-        self.orders_window.show()
-
-    def apply_role_permissions(self):
-        role_id = self.user_info.get("role_id", 0)
-
-        if role_id == 0:  # Гость
+    def _apply_permissions(self):
+        role_id = self.user_data.get("role_id", 0)
+        if role_id == 0:
             self.ui.addToOrderButton.hide()
             self.ui.manageOrdersButton.hide()
-        elif role_id == 1:  # Пользователь
+        elif role_id == 1:
             self.ui.addToOrderButton.show()
             self.ui.manageOrdersButton.hide()
-        elif role_id in [2, 3]:  # Менеджер и Админ
+        elif role_id in (2, 3):
             self.ui.addToOrderButton.show()
             self.ui.manageOrdersButton.show()
 
-    def init_catalog_data(self):
-        headers = ["Фото", "Наименование", "Категория", "Подкатегория", "Производитель", "Состав", "Цена (руб.)", "Остаток"]
-        self.ui.productsTable.setColumnCount(len(headers))
-        self.ui.productsTable.setHorizontalHeaderLabels(headers)
-        self.ui.productsTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    def _load_catalog(self):
+        headers = [
+            "Фото", "Наименование", "Категория", "Подкатегория",
+            "Производитель", "Состав", "Цена (руб.)", "Остаток"
+        ]
+        table = self.ui.productsTable
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
         self.ui.sortComboBox.clear()
         self.ui.sortComboBox.addItems(["Без сортировки", "Сначала дешевые", "Сначала дорогие"])
 
         self.ui.filterComboBox.clear()
         self.ui.filterComboBox.addItem("Все категории")
-        categories = get_all_categories()
-        self.ui.filterComboBox.addItems(categories)
+        self.ui.filterComboBox.addItems(fetch_categories())
 
-        self.all_products = get_all_products()
-        self.apply_filters()
+        self.products = fetch_products()
+        self._apply_filters()
 
-    def apply_filters(self):
-        search_text = self.ui.searchLineEdit.text().lower().strip()
-        selected_category = self.ui.filterComboBox.currentText()
-        sort_index = self.ui.sortComboBox.currentIndex()
+    def _apply_filters(self):
+        query = self.ui.searchLineEdit.text().lower().strip()
+        category = self.ui.filterComboBox.currentText()
+        sort_idx = self.ui.sortComboBox.currentIndex()
 
-        filtered = []
+        result = []
+        for row in self.products:
+            p_id, name, cat, subcat, manuf, comp, price, qty = row
 
-        for p in self.all_products:
-            p_id, name, cat, subcat, manuf, comp, price, qty = p
-
-            if search_text and not (search_text in name.lower() or search_text in manuf.lower()):
+            if query and not (query in name.lower() or query in manuf.lower()):
+                continue
+            if category != "Все категории" and cat != category:
                 continue
 
-            if selected_category != "Все категории" and cat != selected_category:
-                continue
+            result.append(row)
 
-            filtered.append(p)
+        if sort_idx == 1:
+            result.sort(key=lambda x: x[6])
+        elif sort_idx == 2:
+            result.sort(key=lambda x: x[6], reverse=True)
 
-        if sort_index == 1:
-            filtered.sort(key=lambda x: x[6])
-        elif sort_index == 2:
-            filtered.sort(key=lambda x: x[6], reverse=True)
+        self._render_products(result)
 
-        self.display_products(filtered)
+    def _render_products(self, items):
+        table = self.ui.productsTable
+        table.setRowCount(0)
 
-    def display_products(self, products):
-        self.ui.productsTable.setRowCount(0)
+        for r_idx, item in enumerate(items):
+            table.insertRow(r_idx)
+            p_id, name, cat, subcat, manuf, comp, price, qty = item
 
-        for row_idx, product in enumerate(products):
-            self.ui.productsTable.insertRow(row_idx)
+            image_cell = QLabel()
+            image_cell.setAlignment(Qt.AlignCenter)
+            pixmap = QPixmap(f"images/{p_id}.png")
 
-            p_id, name, cat, subcat, manuf, comp, price, qty = product
-
-            # Картинка товара
-            image_label = QLabel()
-            image_label.setAlignment(Qt.AlignCenter)
-
-            image_path = f"images/{p_id}.png"
-            pixmap = QPixmap(image_path)
-
-            if not pixmap.isNull():
-                pixmap = pixmap.scaled(
+            if pixmap.isNull():
+                image_cell.setText("Нет фото")
+            else:
+                image_cell.setPixmap(pixmap.scaled(
                     100, 100,
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation
-                )
-                image_label.setPixmap(pixmap)
-            else:
-                image_label.setText("Нет фото")
+                ))
 
-            image_label.setProperty("product_id", p_id)
-            self.ui.productsTable.setCellWidget(row_idx, 0, image_label)
+            image_cell.setProperty("product_id", p_id)
+            table.setCellWidget(r_idx, 0, image_cell)
 
-            # Остальные данные товара
             values = [name, cat, subcat, manuf, comp, price, qty]
-
-            for col_idx, value in enumerate(values, start=1):
-                if col_idx == 6:
-                    item_text = f"{value:,.2f}".replace(",", " ")
+            for c_idx, val in enumerate(values, start=1):
+                if c_idx == 6:
+                    text = f"{val:,.2f}".replace(",", " ")
                 else:
-                    item_text = str(value)
+                    text = str(val)
 
-                item = QTableWidgetItem(item_text)
-                item.setFlags(item.flags() ^ Qt.ItemIsEditable)
+                cell = QTableWidgetItem(text)
+                cell.setFlags(cell.flags() ^ Qt.ItemIsEditable)
 
-                if col_idx in [6, 7]:
-                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                if c_idx in (6, 7):
+                    cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-                self.ui.productsTable.setItem(row_idx, col_idx, item)
+                table.setItem(r_idx, c_idx, cell)
 
-            self.ui.productsTable.setRowHeight(row_idx, 110)
+            table.setRowHeight(r_idx, 110)
 
-    def logout(self):
+    def _add_to_cart(self):
+        row = self.ui.productsTable.currentRow()
+        if row >= 0:
+            label = self.ui.productsTable.cellWidget(row, 0)
+            pid = int(label.property("product_id"))
+            name = self.ui.productsTable.item(row, 1).text()
+            raw_price = self.ui.productsTable.item(row, 6).text().replace(" ", "").replace(",", ".")
+            price = float(raw_price)
+
+            updated = False
+            for entry in self.cart:
+                if entry[0] == pid:
+                    entry[3] += 1
+                    updated = True
+                    break
+
+            if not updated:
+                self.cart.append([pid, name, price, 1, price])
+
+        self.cart_window = CartWindow(self.user_data, self.cart, self)
+        self.cart_window.show()
+
+    def _open_orders(self):
+        self.orders_window = OrdersWindow(self.user_data)
+        self.orders_window.show()
+
+    def _logout(self):
         self.login_window = LoginWindow()
         self.login_window.show()
         self.close()
 
 
+# ============================================================
+# ОКНО АВТОРИЗАЦИИ
+# ============================================================
 class LoginWindow(QMainWindow):
-    """Окно авторизации"""
+    """Окно входа в систему."""
+
     def __init__(self):
         super().__init__()
-        self.ui = Login()
+        self.ui = LoginUI()
         self.ui.setupUi(self)
 
-        self.ui.loginButton.clicked.connect(self.handle_login)
-        self.ui.guestButton.clicked.connect(self.handle_guest_login)
+        self.ui.loginButton.clicked.connect(self._login)
+        self.ui.guestButton.clicked.connect(self._login_as_guest)
 
-    def handle_login(self):
+    def _login(self):
         login = self.ui.loginLineEdit_2.text().strip()
         if not login:
             QMessageBox.warning(self, "Ошибка", "Введите логин!")
             return
 
-        user_info = authenticate_user(login)
-
-        if user_info:
-            self.open_catalog(user_info)
+        user = check_user(login)
+        if user:
+            self._open_catalog(user)
         else:
             QMessageBox.critical(self, "Ошибка", "Пользователь не найден!")
 
-    def handle_guest_login(self):
-        guest_info = {
+    def _login_as_guest(self):
+        guest = {
             "fio": "Гость",
             "role_name": "Неавторизованный пользователь",
             "role_id": 0
         }
-        self.open_catalog(guest_info)
+        self._open_catalog(guest)
 
-    def open_catalog(self, user_info):
-        self.catalog = AutoReraz(user_info)
+    def _open_catalog(self, user_data):
+        self.catalog = CatalogWindow(user_data)
         self.catalog.show()
         self.close()
 
 
+# ============================================================
+# ТОЧКА ВХОДА
+# ============================================================
 def main():
     app = QApplication(sys.argv)
     window = LoginWindow()
