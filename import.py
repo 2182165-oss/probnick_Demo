@@ -17,7 +17,7 @@ def import_sizes(cur):
         if row[0] is not None:
             size_val = float(row[0])
             cur.execute(
-                "INSERT INTO sizes (value) VALUES (%s) ON CONFLICT (value) DO NOTHING;",
+                "INSERT INTO sizes (size_value) VALUES (%s) ON CONFLICT (size_value) DO NOTHING;",
                 (size_val,)
             )
             count += 1
